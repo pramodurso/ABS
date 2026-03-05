@@ -8,10 +8,12 @@ from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordRequestForm,OAuth2PasswordBearer
 from datetime import timedelta, datetime, timezone
 from jose import jwt ,JWTError
+from ..config import settings
 import hashlib
 
-SECRET_KEY="8967e573b9c602d70e39901eca9ddb4dacb88dc61123fc87382e37b28699907c"
-ALGORITHM="HS256"
+
+SECRET_KEY=settings.secret_key
+ALGORITHM=settings.algorithm
 
 oauth2_bearer=OAuth2PasswordBearer(tokenUrl="/auth/token")
 
