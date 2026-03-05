@@ -1,6 +1,7 @@
 /absenv/
-*.db
 __pycache__/
-.vscode/
+*.db
 test.py
-*.env
+.vscode/
+.git/
+.gitignore

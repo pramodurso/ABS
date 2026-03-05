@@ -57,7 +57,6 @@ class Appointments(Base):
   user_id=Column(Integer,ForeignKey("users.user_id"))
   hospital_id=Column(Integer)
   hospital_name=Column(String)
-  # Date:
   description=Column(String)
   patient_id=Column(Integer,ForeignKey("patients.id"))
   doctor_id=Column(Integer,ForeignKey("doctors.id"))

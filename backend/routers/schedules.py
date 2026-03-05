@@ -85,15 +85,27 @@ def update_schedule(db:db_dependancy,user:user_dependancy,updated_schedule_reque
   if model is None:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Schedule not found for this doctor")
   
+  if (updated_schedule_request.start_time is None and updated_schedule_request.end_time is not None) or (updated_schedule_request.start_time is not None and updated_schedule_request.end_time is None):
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Both start_time and end_time must be provided together to update the schedule timings.")
+  
   update_times=False
   if updated_schedule_request.start_time is not None and updated_schedule_request.end_time is not None:
-    if updated_schedule_request.start_time >= updated_schedule_request.end_time:
+    actual_start_time=updated_schedule_request.start_time
+    actual_end_time=updated_schedule_request.end_time
+    if actual_start_time >= actual_end_time:
       raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="start_time must be before end_time")
     update_times=True
+  else:
+    actual_start_time=model.start_time
+    actual_end_time=model.end_time
 
-  schedule_exists=db.query(Schedule).filter(Schedule.doctor_id==doctor_profile_exists.id).filter(Schedule.day_of_week==updated_schedule_request.day_of_week).filter(Schedule.schedule_id!=schedule_id).all()
+  if updated_schedule_request.day_of_week is not None:
+    actual_day=updated_schedule_request.day_of_week
+  else:
+    actual_day=model.day_of_week
+  schedule_exists=db.query(Schedule).filter(Schedule.doctor_id==doctor_profile_exists.id).filter(Schedule.day_of_week==actual_day).filter(Schedule.schedule_id!=schedule_id).all()
   for schedule in schedule_exists:
-    if updated_schedule_request.start_time<schedule.end_time and updated_schedule_request.end_time>schedule.start_time:
+    if actual_start_time<schedule.end_time and actual_end_time>schedule.start_time:
       raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail="A schedule already exists for this doctor at your requestion time slot. Please update the existing schedule or create a new one with a valid time slot.")
 
 

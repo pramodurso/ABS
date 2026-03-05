@@ -1,0 +1,24 @@
+services:
+  abs_db:
+    image: postgres:16
+    ports:
+      - "5435:5432"
+    environment:
+      - POSTGRES_USER=abs_user
+      - POSTGRES_PASSWORD=pramodabsproject
+      - POSTGRES_DB=abs_database
+    volumes:
+      - db_data:/var/lib/postgresql/data
+  abs_backend:
+    build: .
+    container_name: abs_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://abs_user:pramodabsproject@abs_db:5432/abs_database
+    depends_on:
+      - abs_db
+volumes:
+  db_data:
+
+

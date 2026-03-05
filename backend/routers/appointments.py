@@ -171,37 +171,56 @@ def update_existing_appointment(db:db_dependancy,
   if model is None:
     raise HTTPException(status_code=404,detail="Appointment not found")
   
-  weekday={0:WeekDay.MONDAY, 1:WeekDay.TUESDAY, 2:WeekDay.WEDNESDAY, 3:WeekDay.THURSDAY, 4:WeekDay.FRIDAY, 5:WeekDay.SATURDAY, 6:WeekDay.SUNDAY}
-  day_entered=updated_appointment_request.appointment_date.weekday()
-  day=weekday.get(day_entered)
+  if updated_appointment_request.appointment_date or updated_appointment_request.start_time:
+    if updated_appointment_request.appointment_date:
+      actual_date=updated_appointment_request.appointment_date
+      if actual_date<datetime.now().date():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail="Cannot update appointments to past dates.")
+      day_entered=updated_appointment_request.appointment_date.weekday()
+    else:
+      actual_date=model.appointment_date
+      day_entered=actual_date.weekday()
 
-  doctor_schedules=db.query(Schedule).filter(Schedule.doctor_id==model.doctor_id,Schedule.day_of_week==day).all()
-  doctor_schedule=None
+    if updated_appointment_request.start_time:
+      actual_start_time=datetime.combine(actual_date, updated_appointment_request.start_time)
+    else:
+      actual_start_time=datetime.combine(actual_date, model.start_time)
 
-  for doctor_sched in doctor_schedules:
-    # if doctor_sched.start_time>=updated_appointment_request.start_time and doctor_sched.start_time<=updated_appointment_request.end_time:
-    if updated_appointment_request.start_time>=doctor_sched.start_time and updated_appointment_request.start_time<=doctor_sched.end_time:
-      doctor_schedule=doctor_sched
-      break
-  if doctor_schedule is None:
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Doctor doesn't work on {day.value.capitalize()} at your requested time")
-  
-  time_slot=doctor_schedule.slot_duration
-  duration_slot=timedelta(hours=time_slot.hour,minutes=time_slot.minute,seconds=time_slot.second)
-  start_time=datetime.combine(updated_appointment_request.appointment_date, updated_appointment_request.start_time)
-  new_start_time=start_time.time()
-  new_end_time=(start_time+duration_slot).time()
+    diff_hours=round(((actual_start_time-datetime.now()).total_seconds())/3600)
+    if diff_hours<2:
+      raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail="Appointments must be scheduled at least around 2 hours in advance. Please choose a different time slot.")
 
-  existing_schedules=db.query(Appointments).filter(Appointments.doctor_id==model.doctor_id, Appointments.appointment_date==updated_appointment_request.appointment_date).filter(Appointments.status!=AppointmentStatus.CANCELLED).all()
-  for schedule in existing_schedules:
-    if (new_start_time<schedule.end_time and new_end_time>schedule.start_time):
-      raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="The doctor is not available at the selected time. Please choose a different time slot.")
-  
+    weekday={0:WeekDay.MONDAY, 1:WeekDay.TUESDAY, 2:WeekDay.WEDNESDAY, 3:WeekDay.THURSDAY, 4:WeekDay.FRIDAY, 5:WeekDay.SATURDAY, 6:WeekDay.SUNDAY}
+    day=weekday.get(day_entered)
+    doctor_schedules=db.query(Schedule).filter(Schedule.doctor_id==model.doctor_id,Schedule.day_of_week==day).all()
+    doctor_schedule=None
+
+    if not doctor_schedules:
+      raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Doctor doesn't work on {day.value.capitalize()}")
+
+    for doctor_sched in doctor_schedules:
+      # if doctor_sched.start_time>=updated_appointment_request.start_time and doctor_sched.start_time<=updated_appointment_request.end_time:
+      if actual_start_time>=doctor_sched.start_time and actual_start_time<=doctor_sched.end_time:
+        doctor_schedule=doctor_sched
+        break
+    if doctor_schedule is None:
+      raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Doctor doesn't work on {day.value.capitalize()} at your requested time")
+    
+    time_slot=doctor_schedule.slot_duration
+    duration_slot=timedelta(hours=time_slot.hour,minutes=time_slot.minute,seconds=time_slot.second)
+    new_start_time=actual_start_time.time()
+    new_end_time=(actual_start_time+duration_slot).time()
+
+    existing_schedules=db.query(Appointments).filter(Appointments.doctor_id==model.doctor_id, Appointments.appointment_date==updated_appointment_request.appointment_date).filter(Appointments.status!=AppointmentStatus.CANCELLED).all()
+    for schedule in existing_schedules:
+      if (new_start_time<schedule.end_time and new_end_time>schedule.start_time):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="The doctor is not available at the selected time. Please choose a different time slot.")
+    
   if updated_appointment_request.description is not None:
     model.description = updated_appointment_request.description
   if updated_appointment_request.appointment_date is not None:
     model.appointment_date = updated_appointment_request.appointment_date
-  if updated_appointment_request.start_time is not None:
+  if updated_appointment_request.start_time is not None or updated_appointment_request.appointment_date is not None:
     model.start_time = updated_appointment_request.start_time
     model.end_time = new_end_time  # Update end_time based on new start_time and doctor's slot_duration
   model.status = AppointmentStatus.PENDING  # Reset status to pending on any update for re-approval
