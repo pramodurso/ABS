@@ -13,3 +13,7 @@ app.include_router(schedules.router)
 
 
 Base.metadata.create_all(bind=engine)
+
+@app.get("/healthy")
+def health_check():
+  return {"status":"healthy"}

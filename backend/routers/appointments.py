@@ -62,8 +62,11 @@ def get_available_slots(db:db_dependancy,user:user_dependancy,doctor_id:int=Path
   profile_exists=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
   if not profile_exists:
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Profile required to access this resource")
-  
+  doctor_exists=db.query(DoctorProfile).filter(DoctorProfile.id==doctor_id).first()
+  if not doctor_exists:
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Doctor with doctor_id {doctor_id} doesn't exist.")
   requested_day=date.weekday()
+
   weekday={0:WeekDay.MONDAY, 1:WeekDay.TUESDAY, 2:WeekDay.WEDNESDAY, 3:WeekDay.THURSDAY, 4:WeekDay.FRIDAY, 5:WeekDay.SATURDAY, 6:WeekDay.SUNDAY}
   day=weekday.get(requested_day)
   schedules=db.query(Schedule).filter(Schedule.doctor_id==doctor_id).filter(Schedule.day_of_week==day).all()
@@ -200,7 +203,7 @@ def update_existing_appointment(db:db_dependancy,
 
     for doctor_sched in doctor_schedules:
       # if doctor_sched.start_time>=updated_appointment_request.start_time and doctor_sched.start_time<=updated_appointment_request.end_time:
-      if actual_start_time>=doctor_sched.start_time and actual_start_time<=doctor_sched.end_time:
+      if actual_start_time.time()>=doctor_sched.start_time and actual_start_time.time()<=doctor_sched.end_time:
         doctor_schedule=doctor_sched
         break
     if doctor_schedule is None:
