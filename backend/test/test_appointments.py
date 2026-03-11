@@ -2,7 +2,7 @@ from .utils import *
 from fastapi import status
 from backend.database import get_db
 from backend.routers.auth import get_current_user
-from datetime import datetime
+from datetime import datetime, timedelta
 
 @pytest.fixture(autouse=True )
 def set_patient_profile():
@@ -190,8 +190,9 @@ def test_update_existing_appointment_conflict_past_dates(users_db,schedules_db,p
 
 def test_update_existing_appointment_conflict_atleast_2hr_window(users_db,schedules_db,profiles_db,test_db):
   request_date=str(datetime.now().date())
+  start_req_time=(datetime.now()+ timedelta(hours=1)).time().strftime("%H:%M:%S")
   request_data={"appointment_date":request_date,
-                "start_time":"10:30:00",
+                "start_time":start_req_time,
                 "description":"Rickets"}
   response=client.put("/appointments/update_appointment/1",json=request_data)
 
