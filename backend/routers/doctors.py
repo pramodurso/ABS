@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import DoctorProfile
 from .auth import get_current_user
+from .dependencies import get_current_active_doctor
 
 router=APIRouter(
   prefix="/doctors",
@@ -13,6 +14,8 @@ router=APIRouter(
 
 db_dependancy=Annotated[Session,Depends(get_db)]
 user_dependancy=Annotated[dict,Depends(get_current_user)]
+
+doctor_dependancy=Annotated[DoctorProfile,Depends(get_current_active_doctor)]
 
 class DoctorCreateRequest(BaseModel):
   firstname:str=Field(max_length=50)
@@ -31,13 +34,8 @@ class DoctorUpdateRequest(BaseModel):
 
 
 @router.get("/get_doctor_details",status_code=status.HTTP_200_OK)
-def get_doctor_details(db:db_dependancy,user:user_dependancy):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
-  if (user.get('role')).lower()!="doctor":
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not allowed to access this endpoint because your role doesn't match.")
-  
-  return db.query(DoctorProfile).filter(DoctorProfile.user_id==user.get('id')).first()
+def get_doctor_details(db:db_dependancy,user:user_dependancy,doctor:doctor_dependancy):
+  return doctor
 
 @router.post("/create_new_doctor",status_code=status.HTTP_201_CREATED)
 def create_new_doctor(db:db_dependancy,user:user_dependancy,create_doctor_request:DoctorCreateRequest):
@@ -61,25 +59,17 @@ def create_new_doctor(db:db_dependancy,user:user_dependancy,create_doctor_reques
   db.commit()
 
 @router.put("/update_doctor_details",status_code=status.HTTP_204_NO_CONTENT)
-def update_doctor_details(db:db_dependancy,user:user_dependancy,update_doctor_request:DoctorUpdateRequest):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
-  if (user.get('role')).lower()!="doctor":
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not allowed to access this endpoint because your role doesn't match.")
-  
-  model=db.query(DoctorProfile).filter(DoctorProfile.user_id==user.get('id')).first()
-  if model is None: 
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
+def update_doctor_details(db:db_dependancy,user:user_dependancy,update_doctor_request:DoctorUpdateRequest,doctor:doctor_dependancy):
   
   if update_doctor_request.firstname is not None:
-    model.firstname=update_doctor_request.firstname
+    doctor.firstname=update_doctor_request.firstname
   if update_doctor_request.lastname is not None:
-    model.lastname=update_doctor_request.lastname
+    doctor.lastname=update_doctor_request.lastname
   if update_doctor_request.age is not None:
-    model.age=update_doctor_request.age
+    doctor.age=update_doctor_request.age
   if update_doctor_request.phone_number is not None:
-    model.phone_number=update_doctor_request.phone_number
+    doctor.phone_number=update_doctor_request.phone_number
   if update_doctor_request.department is not None:
-    model.department=update_doctor_request.department
+    doctor.department=update_doctor_request.department
 
   db.commit()

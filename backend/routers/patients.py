@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import PatientProfile
 from .auth import get_current_user
+from .dependencies import get_current_active_patient
 
 router=APIRouter(
   prefix="/patients",
@@ -13,6 +14,8 @@ router=APIRouter(
 
 db_dependancy=Annotated[Session,Depends(get_db)]
 user_dependancy=Annotated[dict,Depends(get_current_user)]
+
+patient_dependancy=Annotated[PatientProfile,Depends(get_current_active_patient)]
 
 class PatientCreateRequest(BaseModel):
   firstname:str=Field(max_length=50)
@@ -29,12 +32,9 @@ class PatientUpdateRequest(BaseModel):
 
 
 @router.get("/get_patient_details",status_code=status.HTTP_200_OK)
-def get_patient_details(db:db_dependancy,user:user_dependancy):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
-  if (user.get('role')).lower()!="patient":
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not allowed to access this endpoint because your role doesn't match.")
-  return db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
+def get_patient_details(db:db_dependancy,user:user_dependancy,patient:patient_dependancy):
+
+  return patient
 
 @router.post("/create_new_patient",status_code=status.HTTP_201_CREATED)
 def create_new_patient(db:db_dependancy,user:user_dependancy,create_patient_request:PatientCreateRequest):
@@ -57,24 +57,16 @@ def create_new_patient(db:db_dependancy,user:user_dependancy,create_patient_requ
   db.commit()
 
 @router.put("/update_patient_details",status_code=status.HTTP_204_NO_CONTENT)
-def update_patient_details(db:db_dependancy,user:user_dependancy,update_patient_request:PatientUpdateRequest):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
-  if (user.get('role')).lower()!="patient":
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not allowed to access this endpoint because your role doesn't match.")
-  
-  model=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
-  if model is None: 
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
-  
+def update_patient_details(db:db_dependancy,user:user_dependancy,update_patient_request:PatientUpdateRequest,patient:patient_dependancy):
+
   if update_patient_request.firstname is not None:
-    model.firstname=update_patient_request.firstname
+    patient.firstname=update_patient_request.firstname
   if update_patient_request.lastname is not None:
-    model.lastname=update_patient_request.lastname
+    patient.lastname=update_patient_request.lastname
   if update_patient_request.age is not None:
-    model.age=update_patient_request.age
+    patient.age=update_patient_request.age
   if update_patient_request.phone_number is not None:
-    model.phone_number=update_patient_request.phone_number
+    patient.phone_number=update_patient_request.phone_number
 
   db.commit()
   

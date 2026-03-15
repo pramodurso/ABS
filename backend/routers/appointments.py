@@ -6,14 +6,20 @@ from ..database import get_db
 from ..models import Appointments,PatientProfile,DoctorProfile, Schedule, WeekDay, AppointmentStatus
 from .auth import get_current_user
 from datetime import date, time, datetime, timedelta
+from .dependencies import get_current_active_doctor,get_current_active_patient
+
 db_dependancy=Annotated[Session,Depends(get_db)]
 
 user_dependancy=Annotated[dict,Depends(get_current_user)]
+
+patient_dependancy=Annotated[PatientProfile,Depends(get_current_active_patient)]
+doctor_dependancy=Annotated[DoctorProfile,Depends(get_current_active_doctor)]
 
 router=APIRouter(
   prefix="/appointments",
   tags=["appoinments"]
 )
+
 
 class CreateAppointmentRequest(BaseModel):
   hospital_id: int=Field(gt=0)
@@ -54,14 +60,7 @@ def get_all_appointments(db:db_dependancy,user:user_dependancy):
     return db.query(Appointments).filter(Appointments.user_id==user.get('id')).all()
 
 @router.get("/available_slots/{doctor_id}/{date}",status_code=status.HTTP_200_OK)
-def get_available_slots(db:db_dependancy,user:user_dependancy,doctor_id:int=Path(...,gt=0),date:date=Path(...)):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")  
-  if (user.get('role')).lower()!="patient":
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not allowed to access this endpoint because your role doesn't match.")
-  profile_exists=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
-  if not profile_exists:
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Profile required to access this resource")
+def get_available_slots(db:db_dependancy,user:user_dependancy,patient:patient_dependancy,doctor_id:int=Path(...,gt=0),date:date=Path(...)):
   doctor_exists=db.query(DoctorProfile).filter(DoctorProfile.id==doctor_id).first()
   if not doctor_exists:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Doctor with doctor_id {doctor_id} doesn't exist.")
@@ -86,15 +85,10 @@ def get_available_slots(db:db_dependancy,user:user_dependancy,doctor_id:int=Path
   return intervals
 
 
+
+
 @router.post("/new_appointment",status_code=status.HTTP_201_CREATED)
-def create_new_appointment(db:db_dependancy,user:user_dependancy,new_appointment_request:CreateAppointmentRequest):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")  
-  if (user.get('role')).lower()!="patient":
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not allowed to access this endpoint because your role doesn't match.")
-  profile_exists=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
-  if not profile_exists:
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Profile required to access this resource")
+def create_new_appointment(db:db_dependancy,user:user_dependancy,new_appointment_request:CreateAppointmentRequest,patient:patient_dependancy):
   appointment_exist=db.query(Appointments).filter(Appointments.user_id==user.get('id')).filter(Appointments.doctor_id==new_appointment_request.doctor_id).first()
   if appointment_exist:
     raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail=f"Patient with user id- {user.get('id')} already has an appointment with doctor {new_appointment_request.doctor_id}")
@@ -146,8 +140,7 @@ def create_new_appointment(db:db_dependancy,user:user_dependancy,new_appointment
     if (new_start_time<schedule.end_time and new_end_time>schedule.start_time) or (new_end_time>schedule.start_time and new_end_time<=schedule.end_time):
       raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="The doctor is not available at the selected time. Please choose a different time slot.")
 
-  
-  patient=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
+
   new_appointment=Appointments(**new_appointment_request.model_dump(),user_id=user.get("id"),patient_id=patient.id,end_time=new_end_time,status=AppointmentStatus.PENDING)
 
   db.add(new_appointment)
@@ -160,16 +153,9 @@ def create_new_appointment(db:db_dependancy,user:user_dependancy,new_appointment
 def update_existing_appointment(db:db_dependancy,
                                 user:user_dependancy,
                                 updated_appointment_request:UpdateAppointmentRequest,
+                                patient:patient_dependancy,
                                 appointment_id:int=Path(gt=0)):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
-  if (user.get('role')).lower()!="patient":
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not allowed to access this endpoint because your role doesn't match.")
-  
-  profile_exists=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
-  if not profile_exists:
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Profile required to access this resource")
-  
+
   model=db.query(Appointments).filter(Appointments.appointment_id==appointment_id).filter(Appointments.user_id==user.get('id')).first()
   if model is None:
     raise HTTPException(status_code=404,detail="Appointment not found")
@@ -231,37 +217,18 @@ def update_existing_appointment(db:db_dependancy,
   # Persist changes
   db.commit()
 
-
 @router.put("/update_appointment_status/{appointment_id}/{appointment_status_updated}",status_code=status.HTTP_204_NO_CONTENT)
-def update_appointment_status(db:db_dependancy,user:user_dependancy,appointment_id:int=Path(...,gt=0),appointment_status_updated:AppointmentStatus=Path(...)):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failes")
-  if (user.get('role')).lower()!="doctor":
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="You are not allowed to access this endpoint because your role doesn't match.")
-  
-  profile_exists=db.query(DoctorProfile).filter(DoctorProfile.user_id==user.get('id')).first()
-  if not profile_exists:
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Profile required to access this resource")
-
-  appointment=db.query(Appointments).filter(Appointments.appointment_id==appointment_id).first()
+def update_appointment_status(db:db_dependancy,user:user_dependancy,doctor:doctor_dependancy,appointment_id:int=Path(...,gt=0),appointment_status_updated:AppointmentStatus=Path(...)):
+  appointment=db.query(Appointments).filter(Appointments.appointment_id==appointment_id).filter(Appointments.doctor_id==doctor.id).first()
   if appointment is None:
     raise HTTPException(status_code=404,detail="Appointment not found")
   
   appointment.status=appointment_status_updated
   db.commit()
-  
 
 
 @router.delete("/cancel_appointment/{appointment_id}",status_code=status.HTTP_204_NO_CONTENT)
-def cancel_appointment(db:db_dependancy,user:user_dependancy,appointment_id:int=Path(...,gt=0)):
-  if user is None:
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
-  if (user.get('role')).lower()!="patient":
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not allowed to access this endpoint because your role doesn't match.")
-
-  profile_exists=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
-  if not profile_exists:
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Profile required to access this resource")
+def cancel_appointment(db:db_dependancy,user:user_dependancy,patient:patient_dependancy,appointment_id:int=Path(...,gt=0)):
   
   model=db.query(Appointments).filter(Appointments.appointment_id==appointment_id).filter(Appointments.user_id==user.get('id')).first()
 
@@ -270,4 +237,3 @@ def cancel_appointment(db:db_dependancy,user:user_dependancy,appointment_id:int=
   db.delete(model)
   db.commit()
 
-  
