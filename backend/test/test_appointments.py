@@ -16,7 +16,7 @@ def set_patient_profile():
 def test_get_all_appointments(test_db,profiles_db,users_db):
   response=client.get("/appointments/")
   assert response.status_code==status.HTTP_200_OK
-  assert response.json()==[{"appointment_id":1,
+  assert response.json()["appointments"]==[{"appointment_id":1,
                             "user_id":2,
                             "hospital_id":1,
                             "hospital_name": "Ramakrishna",

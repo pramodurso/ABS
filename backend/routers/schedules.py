@@ -1,4 +1,4 @@
-from fastapi import Depends,HTTPException,status,APIRouter,Path
+from fastapi import Depends,HTTPException,status,APIRouter,Path,Query
 from pydantic import BaseModel,Field
 from typing import Annotated,Optional
 from sqlalchemy.orm import Session
@@ -32,8 +32,15 @@ class ScheduleUpdateRequest(BaseModel):
   end_time: Optional[time]=Field(default=None,description="End time of the schedule in HH:MM:SS format")
 
 @router.get("/",status_code=status.HTTP_200_OK)
-def get_doctor_schedule(db:db_dependancy,user:user_dependancy,doctor:doctor_dependancy):
-    return db.query(Schedule).filter(Schedule.doctor_id==doctor.id).all()
+def get_doctor_schedule(db:db_dependancy,user:user_dependancy,doctor:doctor_dependancy,limit:int=Query(10,gt=1,le=100),skip:int=Query(0,ge=0)):
+    total=db.query(Schedule).filter(Schedule.doctor_id==doctor.id).count()
+    more_pages=skip+limit<total
+    return {"schedules":db.query(Schedule).filter(Schedule.doctor_id==doctor.id).offset(skip).limit(limit).all(),
+            "total":total,
+            "offset":skip,
+            "limit":limit,
+            "more_pages":more_pages}
+
 
 
 

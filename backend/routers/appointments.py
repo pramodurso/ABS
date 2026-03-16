@@ -40,24 +40,43 @@ class UpdateAppointmentRequest(BaseModel):
 
 
 @router.get("/",status_code=status.HTTP_200_OK)
-def get_all_appointments(db:db_dependancy,user:user_dependancy):
+def get_all_appointments(db:db_dependancy,
+                         user:user_dependancy,
+                         limit:int=Query(10,ge=1,le=100),
+                         skip:int=Query(0,ge=0)):
   if user is None:
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="Authentication Failed")
   
+  
+  
   if (user.get('role')).lower()=="doctor":
-    doctor_profile_exists=db.query(DoctorProfile).filter(DoctorProfile.user_id==user.get('id')).first()
-    if not doctor_profile_exists:
+    doctor=db.query(DoctorProfile).filter(DoctorProfile.user_id==user.get('id')).first()
+    if not doctor:
       raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Profile required to access this resource")
     
-    doctor=db.query(DoctorProfile).filter(DoctorProfile.user_id==user.get('id')).first()
-    return db.query(Appointments).filter(Appointments.doctor_id==doctor.id).all()
+    
+    total=db.query(Appointments).filter(Appointments.doctor_id==doctor.id).count()
+    more_pages=skip+limit<total
+    return {"appointments":db.query(Appointments).filter(Appointments.doctor_id==doctor.id).offset(skip).limit(limit).all(),
+             "total":total,
+             "offset":skip,
+             "limit":limit,
+             "more_pages":more_pages}
+
+    
   
   else:
-    patient_profile_exists=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
-    if not patient_profile_exists:
+    patient=db.query(PatientProfile).filter(PatientProfile.user_id==user.get('id')).first()
+    if not patient:
       raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Profile required to access this resource")
-    
-    return db.query(Appointments).filter(Appointments.user_id==user.get('id')).all()
+
+    total=db.query(Appointments).filter(Appointments.patient_id==patient.id).count()
+    more_pages=skip+limit<total
+    return {"appointments":db.query(Appointments).filter(Appointments.patient_id==patient.id).offset(skip).limit(limit).all(),
+             "total":total,
+             "offset":skip,
+             "limit":limit,
+             "more_pages":more_pages}
 
 @router.get("/available_slots/{doctor_id}/{date}",status_code=status.HTTP_200_OK)
 def get_available_slots(db:db_dependancy,user:user_dependancy,patient:patient_dependancy,doctor_id:int=Path(...,gt=0),date:date=Path(...)):
